@@ -1,0 +1,42 @@
+# API
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+
+# Database
+asyncpg==0.31.0
+sqlalchemy[asyncio]==2.0.36
+pgvector==0.3.5
+
+# Cache
+redis[asyncio]==5.1.1
+
+# LangChain / LangGraph (all v1.x compatible)
+langgraph==1.0.8
+langgraph-checkpoint-postgres==2.0.25
+langchain==0.3.25
+langchain-core==0.3.59
+langchain-community==0.3.31
+langchain-groq==0.2.3
+
+# Groq
+groq==0.13.0
+
+
+# Config
+pydantic==2.9.2
+pydantic-settings==2.10.1
+python-dotenv==1.0.1
+
+# HTTP
+httpx==0.28.1
+
+# Embeddings (CPU-only torch for Windows local machine)
+torch
+sentence-transformers==3.2.1
+
+# File handling 
+aiofiles==24.1.0
+
+# PDF processing 
+pymupdf==1.24.0
