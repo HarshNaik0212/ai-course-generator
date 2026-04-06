@@ -40,3 +40,18 @@ aiofiles==24.1.0
 
 # PDF processing 
 pymupdf==1.24.0
+
+
+fastapi 
+uvicorn 
+celery 
+redis 
+httpx
+
+sentence-transformers
+
+pytest
+pytest-asyncio
+numpy
+FlagEmbedding==1.2.11
+peft

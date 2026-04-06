@@ -6,12 +6,13 @@ from pydantic import BaseModel
 from typing import Optional
 from app.db.postgres import get_db
 from app.rag.retriever import hybrid_retrieve
-from app.rag.generator import get_llm, build_rag_prompt
 from app.memory.history import get_recent_history, save_message
 from app.memory.cache import get_cached_response, set_cached_response
 from app.adaptive.learning_engine import get_knowledge_state
 import uuid
 import json
+from app.rag.generator import stream_llm, build_rag_prompt
+
 
 router = APIRouter()
 
@@ -53,6 +54,7 @@ async def chat(
     async def event_generator():
         try:
             # Step 3 — Check Redis cache first
+            yield f"data: {json.dumps({'status': 'checking_cache'})}\n\n"
             cached = await get_cached_response(request.message)
             if cached:
                 yield f"data: {json.dumps({'token': cached})}\n\n"
@@ -60,11 +62,25 @@ async def chat(
                 return
 
             # Step 4 — Load history + knowledge state (parallel)
+            yield f"data: {json.dumps({'status': 'loading_context'})}\n\n"
             history = await get_recent_history(db, session_id, limit=10)
             knowledge = await get_knowledge_state(db, user_id)
 
-            # Step 5 — Retrieve context
-            chunks = await hybrid_retrieve(db, request.message, top_k=5)
+            # Step 5 — Retrieve + Rerank
+            yield f"data: {json.dumps({'status': 'retrieving'})}\n\n"
+            chunks_candidates = await hybrid_retrieve(
+                db, request.message, top_k=60,
+                use_hyde=True,
+                use_decomposition=True
+            )
+            # Rerank top 60 → top 10
+            yield f"data: {json.dumps({'status': 'reranking'})}\n\n"
+            from app.rag.reranker import reranker  # Lazy import to avoid blocking startup
+            chunks = await reranker.rerank(
+                query=request.message,
+                chunks=chunks_candidates,
+                top_k=10
+            )
 
             # Step 6 — Build adaptive prompt
             prompt = build_rag_prompt(
@@ -75,11 +91,10 @@ async def chat(
             )
 
             # Step 7 — Stream response
-            llm = get_llm(streaming=True)
             full_answer = ""
+            yield f"data: {json.dumps({'status': 'generating'})}\n\n"
 
-            async for chunk in llm.astream(prompt):
-                token = chunk.content
+            async for token in stream_llm(prompt):
                 if token:
                     full_answer += token
                     yield f"data: {json.dumps({'token': token})}\n\n"

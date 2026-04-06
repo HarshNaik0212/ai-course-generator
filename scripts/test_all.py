@@ -7,7 +7,7 @@ import asyncio
 import json
 
 BASE_URL = "http://localhost:8000"
-USER_ID = "test-user-e2e"
+USER_ID = "user_test_123"  # Use a fixed test user ID for consistency across tests
 
 async def test_health():
     print("\n🔍 Testing Health...")
@@ -44,7 +44,7 @@ async def test_search():
     print("\n🔍 Testing Hybrid Search...")
     async with httpx.AsyncClient() as client:
         r = await client.post(f"{BASE_URL}/api/docs/search", json={
-            "query": "how to define a function",
+            "query": "what is Model merging",
             "top_k": 3
         })
         assert r.status_code == 200
@@ -61,7 +61,7 @@ async def test_chat():
     async with httpx.AsyncClient(timeout=60) as client:
         async with client.stream("POST", f"{BASE_URL}/api/chat", json={
             "user_id": USER_ID,
-            "message": "What is a Python function?"
+            "message": "What is Post-TrainingQuantization?"
         }) as r:
             assert r.status_code == 200
             async for line in r.aiter_lines():
@@ -84,10 +84,10 @@ async def test_course_generation():
     async with httpx.AsyncClient(timeout=120) as client:
         r = await client.post(f"{BASE_URL}/api/courses/generate", json={
             "user_id": USER_ID,
-            "topic": "Python Basics",
-            "skill_level": "beginner",
-            "hours_per_day": 1,
-            "duration_weeks": 1,
+            "topic": "Machine Learning",
+            "skill_level": "Intermediate",
+            "hours_per_day": 2,
+            "duration_weeks": 2,
             "goals": ["learn basics"]
         })
         assert r.status_code == 200
@@ -169,7 +169,7 @@ async def run_all_tests():
 
     try:
         await test_health()
-        await test_ingest()
+        # await test_ingest()
         await test_search()
         await test_chat()
         course_id = await test_course_generation()

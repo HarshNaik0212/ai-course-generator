@@ -50,13 +50,13 @@ CREATE TABLE IF NOT EXISTS week_plans (
 );
 
 CREATE TABLE IF NOT EXISTS day_plans (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    week_plan_id UUID REFERENCES week_plans(id) ON DELETE CASCADE,
-    day_number   INT NOT NULL,
-    tasks        JSONB,
-    is_completed BOOLEAN DEFAULT FALSE,
-    content_completed BOOLEAN DEFAULT FALSE,   
-    completed_at TIMESTAMPTZ
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    week_plan_id      UUID REFERENCES week_plans(id) ON DELETE CASCADE,
+    day_number        INT NOT NULL,
+    tasks             JSONB,
+    is_completed      BOOLEAN DEFAULT FALSE,
+    content_completed BOOLEAN DEFAULT FALSE,
+    completed_at      TIMESTAMPTZ
 );
 
 -- ═══════════════════════════════
@@ -78,15 +78,15 @@ CREATE TABLE IF NOT EXISTS chunks (
     chunk_index     INT,
     level           INT DEFAULT 0,
     parent_chunk_id UUID REFERENCES chunks(id),
-    dense_embedding vector(384),
+    dense_embedding vector(1536),           -- ← UPDATED from 384
     metadata        JSONB,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Vector similarity index
-CREATE INDEX IF NOT EXISTS chunks_hnsw
-    ON chunks USING hnsw(dense_embedding vector_cosine_ops)
-    WITH (m=16, ef_construction=64);
+CREATE INDEX IF NOT EXISTS chunks_ivfflat
+    ON chunks USING ivfflat(dense_embedding vector_cosine_ops)
+    WITH (lists=100);
 
 -- Full-text search index
 CREATE INDEX IF NOT EXISTS chunks_fts
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     session_id     UUID NOT NULL,
     role           TEXT CHECK (role IN ('user','assistant')),
     content        TEXT NOT NULL,
-    embedding      vector(384),
+    embedding      vector(1536),            -- ← UPDATED from 384
     module_context TEXT,
     course_id      UUID REFERENCES courses(id),
     is_summarized  BOOLEAN DEFAULT FALSE,
@@ -111,8 +111,9 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS conv_user_session
     ON conversations(user_id, session_id, created_at);
 
-CREATE INDEX IF NOT EXISTS conv_hnsw
-    ON conversations USING hnsw(embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS conv_ivfflat
+    ON conversations USING ivfflat(embedding vector_cosine_ops)
+    WITH (lists=100);
 
 -- ═══════════════════════════════
 -- QUIZZES
@@ -120,8 +121,8 @@ CREATE INDEX IF NOT EXISTS conv_hnsw
 CREATE TABLE IF NOT EXISTS quiz_questions (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id      UUID REFERENCES courses(id) ON DELETE CASCADE,
-    week_number    INT,                        
-    day_number     INT,    
+    week_number    INT,
+    day_number     INT,
     question_text  TEXT NOT NULL,
     question_type  TEXT CHECK (question_type IN ('mcq','code','short_answer')),
     options        JSONB,
@@ -146,14 +147,15 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 CREATE TABLE IF NOT EXISTS query_cache (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     query_text      TEXT NOT NULL,
-    query_embedding vector(384),
+    query_embedding vector(1536),           -- ← UPDATED from 384
     response        TEXT NOT NULL,
     hit_count       INT DEFAULT 1,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS cache_hnsw
-    ON query_cache USING hnsw(query_embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS cache_ivfflat
+    ON query_cache USING ivfflat(query_embedding vector_cosine_ops)
+    WITH (lists=100);
 
 -- ═══════════════════════════════
 -- CERTIFICATES
@@ -166,4 +168,4 @@ CREATE TABLE IF NOT EXISTS certificates (
     quiz_score_avg  FLOAT,
     is_unlocked     BOOLEAN DEFAULT FALSE,
     UNIQUE(user_id, course_id)
-);    
+);

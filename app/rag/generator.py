@@ -1,49 +1,102 @@
-from langchain_groq import ChatGroq
-from app.config import settings
-import logging
+import httpx
 import asyncio
+import logging
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-# ── get_llm MUST be defined first ──────────────────────────
-def get_llm(streaming: bool = False):
-    return ChatGroq(
-        api_key=settings.groq_api_key,
-        model="llama-3.3-70b-versatile",
-        temperature=0.7,
-        streaming=streaming,
-    )
+LLM_URL = f"{settings.amd_llm_url}/v1/chat/completions"
+MODEL_NAME = "qwen-coder"
 
 
-# ── Retry wrapper (uses get_llm, so defined after) ─────────
+def get_llm_url() -> str:
+    return LLM_URL
+
+
+async def call_llm(
+    prompt: str,
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+    stream: bool = False
+):
+    """Call fine-tuned Qwen 7B on AMD MI300x."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(
+            LLM_URL,
+            json={
+                "model": MODEL_NAME,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": stream
+            }
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+
+
 async def llm_invoke_with_retry(
     prompt: str,
     max_retries: int = 3,
     delay_seconds: float = 2.0,
 ) -> str:
-    llm = get_llm(streaming=False)
+    """Call LLM with automatic retry on failure."""
     last_error = None
 
     for attempt in range(max_retries):
         try:
-            response = await llm.ainvoke(prompt)
-            return response.content
+            return await call_llm(prompt)
         except Exception as e:
             last_error = e
-            logger.warning(f"LLM call failed (attempt {attempt+1}/{max_retries}): {e}")
+            logger.warning(
+                f"LLM call failed (attempt {attempt+1}/{max_retries}): {e}"
+            )
             if attempt < max_retries - 1:
                 await asyncio.sleep(delay_seconds)
 
     raise Exception(f"LLM failed after {max_retries} attempts: {last_error}")
 
 
-# ── Prompt builder ──────────────────────────────────────────
+async def stream_llm(prompt: str):
+    """
+    Stream tokens from fine-tuned Qwen 7B.
+    Yields one token at a time.
+    """
+    # Use high timeout for streaming (TTFT can be slow for remote LLM)
+    timeout = httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=180.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async with client.stream(
+            "POST",
+            LLM_URL,
+            json={
+                "model": MODEL_NAME,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
+                "temperature": 0.7,
+                "stream": True
+            }
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        import json
+                        chunk = json.loads(data)
+                        delta = chunk["choices"][0]["delta"]
+                        if "content" in delta and delta["content"]:
+                            yield delta["content"]
+                    except Exception:
+                        continue
+
+
 def build_rag_prompt(
     question: str,
     context_chunks: list,
     conversation_history: list = [],
-    knowledge_state: dict = {}          # ← ADD THIS PARAMETER
+    knowledge_state: dict = {}
 ) -> str:
     # Format retrieved chunks
     context = "\n\n".join([
@@ -51,7 +104,7 @@ def build_rag_prompt(
         for i, c in enumerate(context_chunks)
     ])
 
-    # Format past conversation
+    # Format conversation history
     history_text = ""
     if conversation_history:
         history_text = "\n".join([

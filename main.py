@@ -6,6 +6,7 @@ from app.api.chat import router as chat_router
 from app.api.courses import router as courses_router
 from app.api.progress import router as progress_router
 import logging
+import asyncio
 
 # Set up logging
 logging.basicConfig(
@@ -16,6 +17,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Course Generator", version="1.0.0")
+
+@app.on_event("startup")
+async def startup_event():
+    """Preload heavy models at startup to avoid first-request latency."""
+    logger.info("🚀 Starting up - preloading models...")
+    
+    # Preload reranker in background to not block startup
+    asyncio.create_task(_preload_reranker())
+    
+    logger.info("✅ Startup complete")
+
+async def _preload_reranker():
+    """Load reranker model in background."""
+    try:
+        from app.rag.reranker import Reranker
+        # This will trigger model loading
+        Reranker.get_instance()
+        logger.info("✅ Reranker preloaded")
+    except Exception as e:
+        logger.error(f"❌ Failed to preload reranker: {e}")
 
 # Global exception handler
 @app.exception_handler(Exception)

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from app.rag.generator import get_llm
+from app.rag.generator import llm_invoke_with_retry
 import json
 
 async def get_knowledge_state(

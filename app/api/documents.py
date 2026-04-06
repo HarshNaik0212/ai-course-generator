@@ -5,6 +5,7 @@ from typing import Optional
 from app.db.postgres import get_db
 from app.indexing.ingest import ingest_pdf
 from app.rag.retriever import hybrid_retrieve
+import traceback
 
 router = APIRouter()
 
@@ -52,6 +53,8 @@ async def ingest_pdf_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"INGEST ERROR: {error_detail}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -73,4 +76,6 @@ async def search(
             "results": results
         }
     except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"SEARCH ERROR: {error_detail}")
         raise HTTPException(status_code=500, detail=str(e))
